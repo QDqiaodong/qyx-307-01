@@ -2,6 +2,7 @@ package com.example.storeflow.service;
 
 import com.example.storeflow.dto.*;
 import com.example.storeflow.entity.FlowScenario;
+import com.example.storeflow.entity.OptimizationBatch;
 import com.example.storeflow.entity.StaffAllocation;
 import com.example.storeflow.entity.StoreArea;
 import com.example.storeflow.repository.FlowScenarioRepository;
@@ -24,6 +25,7 @@ public class FlowScenarioService {
     private final StaffAllocationRepository allocationRepository;
     private final StoreAreaService areaService;
     private final ClosureService closureService;
+    private final OptimizationBatchService batchService;
 
     @Transactional
     public FlowScenario createScenario(FlowScenarioDTO dto) {
@@ -90,7 +92,9 @@ public class FlowScenarioService {
 
     @Transactional
     public OptimizationResultDTO optimize(Long scenarioId) {
-        FlowScenario scenario = getScenarioById(scenarioId);
+        // 锁场景行：推演与批次确认/签收落地严格串行，保证轮次单调递增、一批次一落地。
+        FlowScenario scenario = scenarioRepository.lockScenario(scenarioId)
+                .orElseThrow(() -> new RuntimeException("场景不存在: " + scenarioId));
         // 封控区域（仍生效封区单）在推演中既不能作为调入目标，也不能作为调出源，整体排除。
         Set<Long> closedAreaIds = closureService.liveClosedAreaIds(scenarioId);
         List<StaffAllocation> originalAllocations = allocationRepository.findByScenarioIdAndIsOptimized(scenarioId, false)
@@ -222,6 +226,17 @@ public class FlowScenarioService {
         result.setAfterAvgSaturation(LoadCalculationUtil.calculateAvgSaturation(afterDTOs, areas));
         result.setBeforeOverloadedCount(LoadCalculationUtil.countOverloadedAreas(beforeDTOs, areas));
         result.setAfterOverloadedCount(LoadCalculationUtil.countOverloadedAreas(afterDTOs, areas));
+
+        // 本轮推演轮次 +1，并把这一轮冻成落地批次（同一事务）：批次里钉死当时每块区域的
+        // 核定容量、编制配额、优化前/后分配。场景当前分配此处绝不动——只有批次会签
+        // 完成（测算岗确认 + 现场经理签收）后才允许切换成优化后方案。
+        int runSeq = (scenario.getCurrentRunSeq() == null ? 0 : scenario.getCurrentRunSeq()) + 1;
+        scenario.setCurrentRunSeq(runSeq);
+        scenarioRepository.save(scenario);
+        OptimizationBatch frozenBatch = batchService.freezeRunBatch(
+                scenario, runSeq, beforeDTOs, afterDTOs, areaMap, result);
+        result.setRunSeq(runSeq);
+        result.setBatchId(frozenBatch.getId());
         
         for (AllocationDTO alloc : afterDTOs) {
             StaffAllocation newAlloc = new StaffAllocation();

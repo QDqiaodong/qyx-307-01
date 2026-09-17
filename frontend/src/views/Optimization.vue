@@ -35,6 +35,19 @@
       </div>
       
       <div v-else class="space-y-6">
+        <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="text-sm text-blue-800">
+            第 <b>{{ optimizationResult.runSeq }}</b> 轮推演已冻成落地批次
+            <b>#{{ optimizationResult.batchId }}</b>（待测算岗确认）。
+            场景当前分配不会改动——测算岗确认、现场经理签收两步会签完成后，
+            场景才切换成本轮优化后方案。
+          </div>
+          <router-link to="/batches"
+                       class="px-3 py-1.5 text-sm rounded-lg bg-blue-500 text-white hover:bg-blue-600 whitespace-nowrap">
+            前往落地批次会签
+          </router-link>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
             <div class="text-xs text-gray-500">优化前最大饱和度</div>
@@ -186,7 +199,7 @@ const runOptimization = async () => {
   
   try {
     optimizationResult.value = await scenarioApi.optimize(selectedScenarioId.value)
-    ElMessage.success('优化推演完成')
+    ElMessage.success(`优化推演完成，已冻成落地批次 #${optimizationResult.value.batchId}（待会签）`)
     
     await nextTick()
     renderComparisonChart()

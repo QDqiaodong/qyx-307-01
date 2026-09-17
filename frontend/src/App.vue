@@ -58,6 +58,7 @@ const navItems = [
   { name: '临时封区', path: '/closures' },
   { name: '负荷测算', path: '/calculation' },
   { name: '优化推演', path: '/optimization' },
+  { name: '落地批次', path: '/batches' },
   { name: '风险监控', path: '/risk' }
 ]
 

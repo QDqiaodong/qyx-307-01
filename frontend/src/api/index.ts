@@ -36,6 +36,8 @@ export interface FlowScenario {
   scenarioName: string
   festivalName: string
   estimatedTotalFlow: number
+  currentRunSeq?: number
+  appliedRunSeq?: number | null
   createdAt: string
 }
 
@@ -74,6 +76,8 @@ export interface AreaLoadDTO {
 export interface OptimizationResultDTO {
   scenarioId: number
   scenarioName: string
+  runSeq: number
+  batchId: number
   beforeAllocations: AllocationDTO[]
   afterAllocations: AllocationDTO[]
   beforeMaxSaturation: number
@@ -93,6 +97,51 @@ export interface OptimizationStepDTO {
   flowTransfer: number
   description: string
   improvementRate: number
+}
+
+// ============================ 优化落地批次会签 ============================
+
+export type BatchStatus =
+  | 'PENDING_CONFIRM'
+  | 'CONFIRMED'
+  | 'APPLIED'
+  | 'STALE'
+
+export interface OptimizationBatchItemDTO {
+  areaId: number
+  areaName: string
+  maxCapacity: number
+  staffQuota: number
+  beforeStaff: number
+  beforeFlow: number
+  afterStaff: number
+  afterFlow: number
+  beforeSaturation: number
+  afterSaturation: number
+}
+
+export interface OptimizationBatchDTO {
+  id: number
+  scenarioId: number
+  scenarioName: string
+  runSeq: number
+  status: BatchStatus
+  statusText: string
+  confirmedBy?: string
+  confirmedAt?: string
+  signedBy?: string
+  signedAt?: string
+  appliedAt?: string
+  staleReason?: string
+  beforeMaxSaturation?: number
+  afterMaxSaturation?: number
+  beforeOverloadedCount?: number
+  afterOverloadedCount?: number
+  items: OptimizationBatchItemDTO[]
+  scenarioCurrentRunSeq?: number
+  scenarioAppliedRunSeq?: number | null
+  createdAt: string
+  updatedAt: string
 }
 
 // ============================ 临时封区回灌 ============================
@@ -222,6 +271,16 @@ export const closureApi = {
     api.post(`/closures/${id}/void`, { note }),
   reopen: (id: number, note?: string): ApiResult<AreaClosureDTO> =>
     api.post(`/closures/${id}/reopen`, { note })
+}
+
+export const batchApi = {
+  list: (scenarioId?: number): ApiResult<OptimizationBatchDTO[]> =>
+    api.get('/batches', { params: scenarioId ? { scenarioId } : {} }),
+  getById: (id: number): ApiResult<OptimizationBatchDTO> => api.get(`/batches/${id}`),
+  confirm: (id: number, operator?: string): ApiResult<OptimizationBatchDTO> =>
+    api.post(`/batches/${id}/confirm`, { operator }),
+  sign: (id: number, operator?: string): ApiResult<OptimizationBatchDTO> =>
+    api.post(`/batches/${id}/sign`, { operator })
 }
 
 export const healthApi = {

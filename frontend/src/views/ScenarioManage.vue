@@ -35,13 +35,22 @@
     </div>
     
     <div v-if="selectedScenario" class="bg-white rounded-lg shadow-sm p-6">
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center justify-between mb-2">
         <h3 class="text-lg font-semibold text-gray-800">初始人员/客流分配方案</h3>
         <button @click="saveAllocation" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
           保存分配
         </button>
       </div>
-      
+      <div class="mb-4 text-xs text-gray-500">
+        当前分配来源：
+        <el-tag v-if="selectedScenario.appliedRunSeq" type="success" size="small" effect="plain">
+          第 {{ selectedScenario.appliedRunSeq }} 轮推演优化后方案（落地批次会签生效）
+        </el-tag>
+        <el-tag v-else size="small" effect="plain">手工分配方案（尚无批次会签落地）</el-tag>
+        <span class="ml-2">已跑 {{ selectedScenario.currentRunSeq ?? 0 }} 轮推演</span>
+        <router-link to="/batches" class="ml-2 text-blue-500 hover:underline">查看落地批次</router-link>
+      </div>
+
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead>
