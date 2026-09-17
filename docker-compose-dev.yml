@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: ${DOCKER_REGISTRY:-docker.io}/library/mysql:8.0
+    container_name: store-flow-mysql
+    restart: always
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3407}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: store_flow
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: password
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./data/logs/mysql:/var/log/mysql
+    command: --default-authentication-plugin=mysql_native_password
+
+  redis:
+    image: ${DOCKER_REGISTRY:-docker.io}/library/redis:7-alpine
+    container_name: store-flow-redis
+    restart: always
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6507}:6379"
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: store-flow-backend
+    restart: always
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8307}:8080"
+    environment:
+      SERVER_PORT: 8080
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: store_flow
+      DB_USER: admin
+      DB_PASSWORD: password
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - ./data/logs/backend:/app/logs
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: store-flow-frontend
+    restart: always
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8207}:80"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html
+
+volumes:
+  mysql-data:
+  redis-data:
+  backend-logs:

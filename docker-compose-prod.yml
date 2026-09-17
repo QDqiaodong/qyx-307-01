@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: ${DOCKER_REGISTRY:-docker.io}/library/mysql:8.0
+    container_name: store-flow-mysql
+    restart: always
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3407}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-store_flow}
+      MYSQL_USER: ${DB_USER:-admin}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./data/logs/mysql:/var/log/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  redis:
+    image: ${DOCKER_REGISTRY:-docker.io}/library/redis:7-alpine
+    container_name: store-flow-redis
+    restart: always
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6507}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: store-flow-backend
+    restart: always
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8307}:8080"
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-store_flow}
+      DB_USER: ${DB_USER:-admin}
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_logs:/app/logs
+      - optimization_data:/app/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: store-flow-frontend
+    restart: always
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8207}:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/mysql
+
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/redis
+
+  backend_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/logs/backend
+
+  optimization_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/optimization

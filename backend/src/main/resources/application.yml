@@ -1,0 +1,33 @@
+server:
+  port: ${SERVER_PORT:8307}
+
+spring:
+  application:
+    name: store-flow-system
+  
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3407}/${DB_NAME:store_flow}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USER:admin}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+  
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6507}
+      password: ${REDIS_PASSWORD:}
+      timeout: 6000ms
+
+logging:
+  level:
+    com.example.storeflow: DEBUG
+    org.hibernate.SQL: DEBUG
