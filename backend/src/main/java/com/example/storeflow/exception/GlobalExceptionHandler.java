@@ -28,7 +28,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessConflictException.class)
     public ResponseEntity<Map<String, Object>> handleConflict(BusinessConflictException ex) {
-        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage(), null);
+        return build(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage(), ex.getData());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

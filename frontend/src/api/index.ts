@@ -31,6 +31,70 @@ export interface AreaConfigDTO {
   description?: string
 }
 
+// ============================ 推演落地批次会签 ============================
+
+export type OptimizationBatchStatus = 'DRAFT' | 'CONFIRMED' | 'SUPERSEDED' | 'LANDED'
+
+export interface BatchItemDTO {
+  id: number
+  areaId: number
+  areaName: string
+  frozenMaxCapacity: number
+  frozenStaffQuota: number
+  beforeStaff: number
+  beforeFlow: number
+  afterStaff: number
+  afterFlow: number
+  beforeSaturationRate: number
+  afterSaturationRate: number
+  beforeOverloaded: boolean
+  afterOverloaded: boolean
+}
+
+export interface BatchFailureDTO {
+  code: string
+  batchId: number
+  scenarioId: number
+  frozenRound: number
+  currentRound: number
+  status: string
+  message: string
+}
+
+export interface OptimizationBatchDTO {
+  id: number
+  scenarioId: number
+  scenarioName: string
+  optimizationRound: number
+  currentRound: number
+  status: OptimizationBatchStatus
+  statusText: string
+  live: boolean
+  current: boolean
+  canAnalystConfirm: boolean
+  canManagerSign: boolean
+  beforeMaxSaturation: number
+  afterMaxSaturation: number
+  beforeAvgSaturation: number
+  afterAvgSaturation: number
+  beforeOverloadedCount: number
+  afterOverloadedCount: number
+  beforeTotalStaff: number
+  beforeTotalFlow: number
+  afterTotalStaff: number
+  afterTotalFlow: number
+  items: BatchItemDTO[]
+  analystConfirmedAt?: string
+  managerSignedAt?: string
+  landedAt?: string
+  analystNote?: string
+  managerNote?: string
+  supersedeReason?: string
+  failure?: BatchFailureDTO | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface FlowScenario {
   id: number
   scenarioName: string
@@ -74,6 +138,7 @@ export interface AreaLoadDTO {
 export interface OptimizationResultDTO {
   scenarioId: number
   scenarioName: string
+  optimizationRound: number
   beforeAllocations: AllocationDTO[]
   afterAllocations: AllocationDTO[]
   beforeMaxSaturation: number
@@ -82,6 +147,7 @@ export interface OptimizationResultDTO {
   afterAvgSaturation: number
   beforeOverloadedCount: number
   afterOverloadedCount: number
+  batchId: number
   optimizationSteps: OptimizationStepDTO[]
 }
 
@@ -222,6 +288,16 @@ export const closureApi = {
     api.post(`/closures/${id}/void`, { note }),
   reopen: (id: number, note?: string): ApiResult<AreaClosureDTO> =>
     api.post(`/closures/${id}/reopen`, { note })
+}
+
+export const batchApi = {
+  list: (scenarioId?: number): ApiResult<OptimizationBatchDTO[]> =>
+    api.get('/batches', { params: scenarioId ? { scenarioId } : {} }),
+  getById: (id: number): ApiResult<OptimizationBatchDTO> => api.get(`/batches/${id}`),
+  confirm: (id: number, note?: string): ApiResult<OptimizationBatchDTO> =>
+    api.post(`/batches/${id}/confirm`, { note }),
+  sign: (id: number, note?: string): ApiResult<OptimizationBatchDTO> =>
+    api.post(`/batches/${id}/sign`, { note })
 }
 
 export const healthApi = {

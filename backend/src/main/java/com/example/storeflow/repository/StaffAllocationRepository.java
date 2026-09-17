@@ -17,6 +17,10 @@ public interface StaffAllocationRepository extends JpaRepository<StaffAllocation
 
     List<StaffAllocation> findByScenarioIdAndIsOptimized(Long scenarioId, Boolean isOptimized);
 
+    /** 某轮推演冻出的优化后草稿行。 */
+    List<StaffAllocation> findByScenarioIdAndIsOptimizedAndOptimizationRound(
+            Long scenarioId, Boolean isOptimized, Integer optimizationRound);
+
     /**
      * 悲观写锁锁定该场景在用分配行（is_optimized = false）。
      *

@@ -35,6 +35,20 @@
     </div>
     
     <div v-if="selectedScenario" class="bg-white rounded-lg shadow-sm p-6">
+      <div v-if="inFlightBatch" class="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-800">
+        第{{ inFlightBatch.optimizationRound }}轮推演已冻成批次 #{{ inFlightBatch.id }}（{{ inFlightBatch.statusText }}），
+        会签两步完成前<b>本页分配仍是旧方案</b>。
+        <router-link :to="{ path: '/batches', query: { scenarioId: String(selectedScenario.id) } }"
+                     class="text-blue-600 hover:underline ml-1">去会签</router-link>
+      </div>
+      <div v-else-if="landedBatch" class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800 flex items-center justify-between">
+        <span>
+          当前人员/客流分配为已会签落地的优化后方案：批次 #{{ landedBatch.id }}（第{{ landedBatch.optimizationRound }}轮，
+          {{ formatDate(landedBatch.landedAt) }} 签收）。
+        </span>
+        <router-link :to="{ path: '/batches', query: { scenarioId: String(selectedScenario.id) } }"
+                     class="text-blue-600 hover:underline ml-3">查看批次档案</router-link>
+      </div>
       <div class="flex items-center justify-between mb-6">
         <h3 class="text-lg font-semibold text-gray-800">初始人员/客流分配方案</h3>
         <button @click="saveAllocation" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
@@ -117,9 +131,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { areaApi, scenarioApi, closureApi, type FlowScenario, type FlowScenarioDTO, type AllocationDTO, type StoreArea } from '@/api'
+import { areaApi, scenarioApi, closureApi, batchApi, type FlowScenario, type FlowScenarioDTO, type AllocationDTO, type StoreArea, type OptimizationBatchDTO } from '@/api'
 
 const scenarios = ref<FlowScenario[]>([])
 const showModal = ref(false)
@@ -127,6 +141,25 @@ const selectedScenario = ref<FlowScenario | null>(null)
 const allocations = ref<AllocationDTO[]>([])
 const areas = ref<StoreArea[]>([])
 const closedAreaIds = ref<Set<number>>(new Set())
+const batches = ref<OptimizationBatchDTO[]>([])
+
+const landedBatch = computed(() =>
+  batches.value.filter(b => b.status === 'LANDED')
+    .sort((a, b2) => b2.optimizationRound - a.optimizationRound)[0] || null
+)
+const inFlightBatch = computed(() =>
+  batches.value
+    .filter(b => b.current && (b.status === 'DRAFT' || b.status === 'CONFIRMED'))
+    .sort((a, b2) => b2.optimizationRound - a.optimizationRound)[0] || null
+)
+
+const loadBatches = async (scenarioId: number) => {
+  try {
+    batches.value = await batchApi.list(scenarioId)
+  } catch {
+    batches.value = []
+  }
+}
 
 const isClosed = (areaId: number) => closedAreaIds.value.has(areaId)
 
@@ -201,7 +234,11 @@ const deleteScenario = async (id: number) => {
 
 const selectScenario = async (scenario: FlowScenario) => {
   selectedScenario.value = scenario
-  await Promise.all([loadAllocations(scenario.id), loadClosedAreas(scenario.id)])
+  await Promise.all([
+    loadAllocations(scenario.id),
+    loadClosedAreas(scenario.id),
+    loadBatches(scenario.id)
+  ])
 }
 
 const loadAllocations = async (scenarioId: number) => {
@@ -267,13 +304,17 @@ const getSaturationClass = (alloc: AllocationDTO) => {
   return 'bg-green-100 text-green-800'
 }
 
-const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleString('zh-CN')
+const formatDate = (dateStr?: string) => {
+  return dateStr ? new Date(dateStr).toLocaleString('zh-CN') : '-'
 }
 
 watch(selectedScenario, async (newVal) => {
   if (newVal) {
-    await Promise.all([loadAllocations(newVal.id), loadClosedAreas(newVal.id)])
+    await Promise.all([
+      loadAllocations(newVal.id),
+      loadClosedAreas(newVal.id),
+      loadBatches(newVal.id)
+    ])
   }
 })
 

@@ -33,6 +33,11 @@ const router = createRouter({
       component: () => import('@/views/Optimization.vue')
     },
     {
+      path: '/batches',
+      name: 'BatchLanding',
+      component: () => import('@/views/BatchLanding.vue')
+    },
+    {
       path: '/risk',
       name: 'RiskMonitor',
       component: () => import('@/views/RiskMonitor.vue')

@@ -4,6 +4,7 @@ import com.example.storeflow.dto.*;
 import com.example.storeflow.entity.FlowScenario;
 import com.example.storeflow.entity.StaffAllocation;
 import com.example.storeflow.entity.StoreArea;
+import com.example.storeflow.exception.ResourceNotFoundException;
 import com.example.storeflow.repository.FlowScenarioRepository;
 import com.example.storeflow.repository.StaffAllocationRepository;
 import com.example.storeflow.util.LoadCalculationUtil;
@@ -24,6 +25,7 @@ public class FlowScenarioService {
     private final StaffAllocationRepository allocationRepository;
     private final StoreAreaService areaService;
     private final ClosureService closureService;
+    private final OptimizationBatchService optimizationBatchService;
 
     @Transactional
     public FlowScenario createScenario(FlowScenarioDTO dto) {
@@ -59,7 +61,7 @@ public class FlowScenarioService {
 
     public FlowScenario getScenarioById(Long id) {
         return scenarioRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("场景不存在: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("场景不存在: " + id));
     }
 
     public List<FlowScenario> getAllScenarios() {
@@ -90,19 +92,30 @@ public class FlowScenarioService {
 
     @Transactional
     public OptimizationResultDTO optimize(Long scenarioId) {
-        FlowScenario scenario = getScenarioById(scenarioId);
+        // 锁场景行串行化推演与会签落账；推演只产出新轮次草稿并冻结批次，绝不直接改在用分配。
+        FlowScenario scenario = scenarioRepository.lockById(scenarioId)
+                .orElseThrow(() -> new ResourceNotFoundException("场景不存在: " + scenarioId));
+
+        // 又跑一轮：上一轮所有在途批次（测算已确认但现场未签收的也算）一律作废，
+        // 现场经理不能再拿旧批次去改场景。
+        optimizationBatchService.supersedeLiveBatchesForNewRound(scenario);
+
+        int round = (scenario.getOptimizationRound() == null ? 0 : scenario.getOptimizationRound()) + 1;
+        scenario.setOptimizationRound(round);
+        scenarioRepository.save(scenario);
+
         // 封控区域（仍生效封区单）在推演中既不能作为调入目标，也不能作为调出源，整体排除。
         Set<Long> closedAreaIds = closureService.liveClosedAreaIds(scenarioId);
-        List<StaffAllocation> originalAllocations = allocationRepository.findByScenarioIdAndIsOptimized(scenarioId, false)
+        List<StaffAllocation> originalAllocations = allocationRepository.lockBaseAllocations(scenarioId)
                 .stream().filter(a -> !closedAreaIds.contains(a.getAreaId())).collect(Collectors.toList());
         List<StoreArea> areas = areaService.getAllAreas().stream()
                 .filter(a -> !closedAreaIds.contains(a.getId())).collect(Collectors.toList());
-        
+
         Map<Long, StoreArea> areaMap = areas.stream()
                 .collect(Collectors.toMap(StoreArea::getId, a -> a));
         Map<Long, String> areaNameMap = areas.stream()
                 .collect(Collectors.toMap(StoreArea::getId, StoreArea::getAreaName));
-        
+
         List<AllocationDTO> beforeDTOs = originalAllocations.stream()
                 .map(alloc -> {
                     AllocationDTO dto = new AllocationDTO();
@@ -119,15 +132,18 @@ public class FlowScenarioService {
                     return dto;
                 })
                 .collect(Collectors.toList());
-        
+
         OptimizationResultDTO result = new OptimizationResultDTO();
         result.setScenarioId(scenarioId);
         result.setScenarioName(scenario.getScenarioName());
+        result.setOptimizationRound(round);
         result.setBeforeAllocations(beforeDTOs);
-        
+
+        // 旧轮次草稿全部废弃；新轮草稿随轮次写入，不影响在用分配（is_optimized=false 行不动）。
         allocationRepository.deleteByScenarioIdAndIsOptimized(scenarioId, true);
-        
+
         List<OptimizationStepDTO> steps = new ArrayList<>();
+        // after 复制时带上推演当时的容量，草稿行据此冻快照。
         List<AllocationDTO> afterDTOs = beforeDTOs.stream()
                 .map(dto -> {
                     AllocationDTO copy = new AllocationDTO();
@@ -230,9 +246,17 @@ public class FlowScenarioService {
             newAlloc.setAllocatedStaff(alloc.getAllocatedStaff());
             newAlloc.setAllocatedFlow(alloc.getAllocatedFlow());
             newAlloc.setIsOptimized(true);
+            newAlloc.setOptimizationRound(round);
+            StoreArea area = areaMap.get(alloc.getAreaId());
+            AllocationDTO before = beforeDTOs.stream()
+                    .filter(b -> b.getAreaId().equals(alloc.getAreaId())).findFirst().orElse(null);
+            newAlloc.setBeforeStaff(before != null ? before.getAllocatedStaff() : alloc.getAllocatedStaff());
+            newAlloc.setBeforeFlow(before != null ? before.getAllocatedFlow() : alloc.getAllocatedFlow());
+            newAlloc.setFrozenMaxCapacity(area != null ? area.getMaxCapacity() : alloc.getMaxCapacity());
+            newAlloc.setFrozenStaffQuota(area != null ? area.getStaffQuota() : null);
             allocationRepository.save(newAlloc);
         }
-        
+
         for (AllocationDTO alloc : afterDTOs) {
             StoreArea area = areaMap.get(alloc.getAreaId());
             if (area != null) {
@@ -241,8 +265,14 @@ public class FlowScenarioService {
                 areaService.updateAreaRisk(area.getId(), riskLevel > 0, riskLevel);
             }
         }
-        
-        log.info("完成场景优化: {}, 优化步骤: {}", scenario.getScenarioName(), steps.size());
+
+        // 推演完一轮即冻成一份可复查的落地批次（同一事务）：冻结当时每块区域的核定容量、
+        // 编制配额、优化前/优化后分配。批次未走完两段会签前，场景在用分配一律不动。
+        OptimizationBatchDTO batch = optimizationBatchService.freezeFromLatestRound(scenarioId);
+        result.setBatchId(batch.getId());
+
+        log.info("完成场景优化: {}, 第{}轮, 优化步骤: {}, 已冻结落地批次#{}",
+                scenario.getScenarioName(), round, steps.size(), batch.getId());
         return result;
     }
 

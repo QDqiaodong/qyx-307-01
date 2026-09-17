@@ -11,6 +11,9 @@ public class OptimizationResultDTO {
 
     private String scenarioName;
 
+    /** 本轮是该场景第几轮推演（落地批次冻住的就是这个轮次）。 */
+    private Integer optimizationRound;
+
     private List<AllocationDTO> beforeAllocations;
 
     private List<AllocationDTO> afterAllocations;
@@ -26,6 +29,9 @@ public class OptimizationResultDTO {
     private Integer beforeOverloadedCount;
 
     private Integer afterOverloadedCount;
+
+    /** 本轮推演冻出的落地批次 id（前端会签面板据此打开批次）。 */
+    private Long batchId;
 
     private List<OptimizationStepDTO> optimizationSteps;
 }
